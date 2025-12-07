@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 
+from fastmcp import FastMCP
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -43,6 +44,18 @@ app.include_router(ticker.router)
 def root():
     return {"status": "ok", "message": "YFinance Proxy API"}
 
+
+mcp = FastMCP.from_fastapi(app=app, name="yfinance mcp")
+mcp_app = mcp.http_app(path="/mcp")
+
+combined_app = FastAPI(
+    title="E-commerce API with MCP",
+    routes=[
+        *mcp_app.routes,  # MCP routes
+        *app.routes,  # Original API routes
+    ],
+    lifespan=mcp_app.lifespan,
+)
 
 # @app.get("/health", tags=["health"])
 # def health_check():
