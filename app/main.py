@@ -57,6 +57,14 @@ combined_app = FastAPI(
     lifespan=mcp_app.lifespan,
 )
 
+combined_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # @app.get("/health", tags=["health"])
 # def health_check():
 #     return {"status": "healthy"}
