@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import yfinance as yf
@@ -138,7 +138,7 @@ class YFinanceService:
                     title=item.get("title", ""),
                     publisher=item.get("publisher", ""),
                     link=item.get("link", ""),
-                    provider_publish_time=datetime.fromtimestamp(item.get("providerPublishTime", 0)),
+                    provider_publish_time=datetime.fromtimestamp(item.get("providerPublishTime", 0), tz=timezone.utc),
                     type=item.get("type", ""),
                     related_tickers=item.get("relatedTickers", []),
                 )
@@ -270,7 +270,7 @@ class YFinanceService:
             regular_market_price=info.get("regularMarketPrice"),
             regular_market_change=info.get("regularMarketChange"),
             regular_market_change_percent=info.get("regularMarketChangePercent"),
-            regular_market_time=datetime.fromtimestamp(info["regularMarketTime"])
+            regular_market_time=datetime.fromtimestamp(info["regularMarketTime"], tz=timezone.utc)
             if info.get("regularMarketTime")
             else None,
             regular_market_day_high=info.get("regularMarketDayHigh"),
