@@ -45,7 +45,7 @@ def root():
     return {"status": "ok", "message": "YFinance Proxy API"}
 
 
-mcp = FastMCP.from_fastapi(app=app, name="yfinance mcp")
+mcp = FastMCP.from_fastapi(app=app, name="yfinance mcp", stateless_http=True)
 mcp_app = mcp.http_app(path="/mcp")
 
 combined_app = FastAPI(
