@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timezone
 from typing import Any
 
@@ -242,8 +243,8 @@ class YFinanceService:
                             ask=row.get("ask"),
                             change=row.get("change"),
                             percent_change=row.get("percentChange"),
-                            volume=int(row.get("volume", 0)) if row.get("volume") else None,
-                            open_interest=int(row.get("openInterest", 0)) if row.get("openInterest") else None,
+                            volume=int(row.get("volume", 0)) if (vol := row.get("volume")) and not math.isnan(vol) else None,
+                            open_interest=int(row.get("openInterest", 0)) if (oi := row.get("openInterest")) and not math.isnan(oi) else None,
                             implied_volatility=row.get("impliedVolatility"),
                             in_the_money=row.get("inTheMoney"),
                         )
