@@ -17,7 +17,7 @@ from app.models.ticker import (
 )
 from app.services.yfinance_service import yfinance_service
 
-router = APIRouter(tags=["ticker"])
+router = APIRouter(prefix="/ticker", tags=["ticker"])
 
 
 @router.get(

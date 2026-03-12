@@ -3,7 +3,9 @@ from contextlib import asynccontextmanager
 from fastmcp import FastMCP
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+import os
 
 from app.routes import ticker
 
@@ -37,12 +39,28 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+# Mount static files
+static_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+if os.path.exists(static_path):
+    app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+
+@app.get("/", tags=["health"], response_class=HTMLResponse)
+def root():
+    """Serve the frontend HTML page."""
+    index_path = os.path.join(static_path, "index.html")
+    if os.path.exists(index_path):
+        with open(index_path, "r") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content="<h1>YFinance Proxy API</h1><p>Frontend not available.</p>", status_code=404)
+
+
 app.include_router(ticker.router)
 
 
-@app.get("/", tags=["health"])
-def root():
-    return {"status": "ok", "message": "YFinance Proxy API"}
+@app.get("/health", tags=["health"])
+def health_check():
+    return {"status": "healthy"}
 
 
 mcp = FastMCP.from_fastapi(app=app, name="yfinance mcp", stateless_http=True)
@@ -64,7 +82,3 @@ combined_app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# @app.get("/health", tags=["health"])
-# def health_check():
-#     return {"status": "healthy"}

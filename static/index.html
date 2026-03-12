@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YFinance Proxy Test Frontend</title>
+  <link rel="stylesheet" href="https://oat.ink/oat.css">
+  <script defer src="https://oat.ink/oat.js"></script>
+  <style>
+    .results-area { min-height: 400px; }
+    .loading { text-align: center; padding: 40px; }
+    .error { color: var(--color-red); background: var(--color-red-mix); padding: 16px; border-radius: 8px; }
+    .json-output { background: var(--color-gray-900); color: var(--color-gray-100); padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
+    .tab-button { padding: 8px 16px; margin-right: 4px; border-radius: 6px; border: 1px solid var(--color-gray-700); background: var(--color-gray-800); color: var(--color-gray-200); cursor: pointer; }
+    .tab-button:hover { background: var(--color-gray-700); }
+    .tab-button.active { background: var(--color-primary); color: var(--color-white); border-color: var(--color-primary); }
+    .input-group { display: flex; gap: 8px; margin-bottom: 16px; }
+    .input-group input { flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--color-gray-600); background: var(--color-gray-800); color: var(--color-white); }
+    .section-title { margin-top: 24px; margin-bottom: 12px; font-size: 14px; font-weight: 600; color: var(--color-gray-300); }
+    .card { background: var(--color-gray-800); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .key-value-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+    .key-value-item { background: var(--color-gray-700); padding: 12px; border-radius: 6px; }
+    .key-value-item .key { color: var(--color-gray-400); font-size: 12px; margin-bottom: 4px; }
+    .key-value-item .value { color: var(--color-white); }
+    .controls { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .controls select, .controls input { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--color-gray-600); background: var(--color-gray-800); color: var(--color-white); }
+    .toggle-group { display: flex; gap: 16px; margin-bottom: 16px; }
+    .toggle-group label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <header>
+      <h1>YFinance Proxy Test Frontend</h1>
+      <p class="lead">Test the yfinance-proxy API endpoints</p>
+    </header>
+
+    <main>
+      <div class="card">
+        <div class="input-group">
+          <input type="text" id="symbolInput" placeholder="Enter symbol (e.g., AAPL, TSLA, MSFT)" value="AAPL">
+          <button id="searchBtn" class="button primary">Search</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <nav class="tabs" id="tabs">
+          <button class="tab-button active" data-tab="quote">Quote</button>
+          <button class="tab-button" data-tab="info">Info</button>
+          <button class="tab-button" data-tab="history">History</button>
+          <button class="tab-button" data-tab="recommendations">Recommendations</button>
+          <button class="tab-button" data-tab="actions">Actions</button>
+          <button class="tab-button" data-tab="news">News</button>
+          <button class="tab-button" data-tab="financials">Financials</button>
+          <button class="tab-button" data-tab="holders">Holders</button>
+          <button class="tab-button" data-tab="options">Options</button>
+        </nav>
+      </div>
+
+      <div id="results" class="results-area card">
+        <p class="lead">Select a tab and click Search to view data for the symbol.</p>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const API_BASE = '/ticker';
+    let currentSymbol = '';
+    let currentTab = 'quote';
+
+    // Tab navigation
+    document.querySelectorAll('.tab-button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentTab = btn.dataset.tab;
+        if (currentSymbol) fetchData(currentSymbol, currentTab);
+      });
+    });
+
+    // Search button
+    document.getElementById('searchBtn').addEventListener('click', () => {
+      const symbol = document.getElementById('symbolInput').value.trim().toUpperCase();
+      if (symbol) {
+        currentSymbol = symbol;
+        fetchData(symbol, currentTab);
+      }
+    });
+
+    // Enter key support
+    document.getElementById('symbolInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        const symbol = document.getElementById('symbolInput').value.trim().toUpperCase();
+        if (symbol) {
+          currentSymbol = symbol;
+          fetchData(symbol, currentTab);
+        }
+      }
+    });
+
+    async function fetchData(symbol, endpoint) {
+      const results = document.getElementById('results');
+      results.innerHTML = '<div class="loading"><p>Loading data...</p></div>';
+
+      try {
+        let url = `${API_BASE}/${symbol}/${endpoint}`;
+        let data;
+
+        if (endpoint === 'history') {
+          const period = document.getElementById('historyPeriod')?.value || '1mo';
+          const interval = document.getElementById('historyInterval')?.value || '1d';
+          url = `${url}?period=${period}&interval=${interval}`;
+        } else if (endpoint === 'financials') {
+          const quarterly = document.getElementById('financialsQuarterly')?.checked || false;
+          url = `${url}?quarterly=${quarterly}`;
+        } else if (endpoint === 'options') {
+          const date = document.getElementById('optionsDate')?.value;
+          if (date) url = `${url}?date=${date}`;
+        }
+
+        const response = await fetch(url);
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+          throw new Error(error.detail || `HTTP ${response.status}`);
+        }
+
+        data = await response.json();
+        renderResults(data, endpoint);
+      } catch (error) {
+        results.innerHTML = `<div class="error"><strong>Error:</strong> ${error.message}</div>`;
+      }
+    }
+
+    function renderResults(data, endpoint) {
+      const results = document.getElementById('results');
+      let html = '';
+
+      switch (endpoint) {
+        case 'quote':
+          html = renderQuote(data);
+          break;
+        case 'info':
+          html = renderInfo(data);
+          break;
+        case 'history':
+          html = renderHistory(data);
+          break;
+        case 'recommendations':
+          html = renderRecommendations(data);
+          break;
+        case 'actions':
+          html = renderActions(data);
+          break;
+        case 'news':
+          html = renderNews(data);
+          break;
+        case 'financials':
+          html = renderFinancials(data);
+          break;
+        case 'holders':
+          html = renderHolders(data);
+          break;
+        case 'options':
+          html = renderOptions(data);
+          break;
+      }
+
+      results.innerHTML = html;
+    }
+
+    function renderQuote(data) {
+      if (!data.regular_market_price) return '<p>No quote data available.</p>';
+
+      const changeColor = data.regular_market_change >= 0 ? 'color: #4ade80;' : 'color: #f87171;';
+      const changeSign = data.regular_market_change >= 0 ? '+' : '';
+
+      return `
+        <div class="card">
+          <h2>${data.symbol} - Current Quote</h2>
+          <div style="font-size: 32px; font-weight: bold; margin: 16px 0;">
+            $${formatNumber(data.regular_market_price)}
+          </div>
+          <div style="${changeColor}; font-size: 18px; margin-bottom: 24px;">
+            ${changeSign}${formatNumber(data.regular_market_change)} 
+            (${changeSign}${formatPercent(data.regular_market_change_percent)}%)
+          </div>
+          <div class="key-value-grid">
+            ${KeyValue('Previous Close', data.regular_market_previous_close, '$')}
+            ${KeyValue('Open', data.regular_market_open, '$')}
+            ${KeyValue('Day High', data.regular_market_day_high, '$')}
+            ${KeyValue('Day Low', data.regular_market_day_low, '$')}
+            ${KeyValue('Volume', data.regular_market_volume)}
+            ${KeyValue('Bid', data.bid, '$')}
+            ${KeyValue('Ask', data.ask, '$')}
+            ${KeyValue('Market Cap', data.market_cap, '$', true)}
+            ${KeyValue('52 Week Low', data.fifty_two_week_low, '$')}
+            ${KeyValue('52 Week High', data.fifty_two_week_high, '$')}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderInfo(data) {
+      if (!data.info) return '<p>No info data available.</p>';
+
+      const sections = {
+        'Company Info': ['companyName', 'sector', 'industry', 'website', 'address1', 'city', 'state', 'zip', 'country', 'phone', 'fullTimeEmployees'],
+        'Market Data': ['marketCap', 'enterpriseValue', 'trailingPE', 'forwardPE', 'priceToBook', 'beta', 'fiftyTwoWeekLow', 'fiftyTwoWeekHigh', 'averageVolume', 'dividendRate', 'dividendYield', 'payoutRatio', 'exDividendDate', 'fiveYearAvgDividendYield'],
+        'Financials': ['profitMargins', 'revenuePerShare', 'totalRevenue', 'grossProfits', 'freeCashflow', 'operatingCashflow', 'earningsGrowth', 'revenueGrowth', 'returnOnAssets', 'returnOnEquity', 'currentRatio', 'debtToEquity', 'quickRatio'],
+        'Management': ['longBusinessSummary']
+      };
+
+      let html = '<h2>Company Information</h2>';
+
+      for (const [section, keys] of Object.entries(sections)) {
+        let sectionHtml = '<h3 class="section-title">' + section + '</h3>';
+        if (keys.length === 1) {
+          const value = data.info[keys[0]];
+          if (value) {
+            sectionHtml += '<div class="key-value-item"><div class="key">' + keys[0] + '</div><div class="value">' + String(value).replace(/\n/g, '<br>') + '</div></div>';
+          }
+        } else {
+          sectionHtml += '<div class="key-value-grid">';
+          for (const key of keys) {
+            if (data.info[key] !== undefined && data.info[key] !== null) {
+              let value = data.info[key];
+              let prefix = '';
+              let isLarge = false;
+
+              if (key.includes('Price') || key.includes('Value') || key.includes('Revenue') || key.includes('MarketCap') || key.includes('Cashflow') || key.includes('Profits')) {
+                prefix = '$';
+                if (key === 'marketCap' || key === 'enterpriseValue') isLarge = true;
+              } else if (key.includes('Ratio') || key.includes('Margin') || key.includes('Yield') || key.includes('Return')) {
+                prefix = '';
+              } else if (key.includes('Volume') || key.includes('Employees') || key.includes('Shares')) {
+              } else if (key.includes('Percent')) {
+                prefix = '';
+              }
+
+              sectionHtml += KeyValue(key, value, prefix, isLarge);
+            }
+          }
+          sectionHtml += '</div>';
+        }
+        html += sectionHtml;
+      }
+
+      return html;
+    }
+
+    function renderHistory(data) {
+      if (!data.data || data.data.length === 0) return '<p>No historical data available.</p>';
+
+      let html = `
+        <div class="card">
+          <h2>${data.symbol} - Historical Data</h2>
+          <div class="controls">
+            <select id="historyPeriod">
+              <option value="1d" ${data.period === '1d' ? 'selected' : ''}>1 Day</option>
+              <option value="5d" ${data.period === '5d' ? 'selected' : ''}>5 Days</option>
+              <option value="1mo" ${data.period === '1mo' ? 'selected' : ''}>1 Month</option>
+              <option value="3mo" ${data.period === '3mo' ? 'selected' : ''}>3 Months</option>
+              <option value="6mo" ${data.period === '6mo' ? 'selected' : ''}>6 Months</option>
+              <option value="1y" ${data.period === '1y' ? 'selected' : ''}>1 Year</option>
+              <option value="2y" ${data.period === '2y' ? 'selected' : ''}>2 Years</option>
+              <option value="5y" ${data.period === '5y' ? 'selected' : ''}>5 Years</option>
+              <option value="ytd" ${data.period === 'ytd' ? 'selected' : ''}>YTD</option>
+              <option value="max" ${data.period === 'max' ? 'selected' : ''}>Max</option>
+            </select>
+            <select id="historyInterval">
+              <option value="1m" ${data.interval === '1m' ? 'selected' : ''}>1 Min</option>
+              <option value="2m" ${data.interval === '2m' ? 'selected' : ''}>2 Min</option>
+              <option value="5m" ${data.interval === '5m' ? 'selected' : ''}>5 Min</option>
+              <option value="15m" ${data.interval === '15m' ? 'selected' : ''}>15 Min</option>
+              <option value="30m" ${data.interval === '30m' ? 'selected' : ''}>30 Min</option>
+              <option value="60m" ${data.interval === '60m' ? 'selected' : ''}>60 Min</option>
+              <option value="1h" ${data.interval === '1h' ? 'selected' : ''}>1 Hour</option>
+              <option value="1d" ${data.interval === '1d' ? 'selected' : ''}>1 Day</option>
+              <option value="5d" ${data.interval === '5d' ? 'selected' : ''}>5 Days</option>
+              <option value="1wk" ${data.interval === '1wk' ? 'selected' : ''}>1 Week</option>
+              <option value="1mo" ${data.interval === '1mo' ? 'selected' : ''}>1 Month</option>
+              <option value="3mo" ${data.interval === '3mo' ? 'selected' : ''}>3 Months</option>
+            </select>
+            <button class="button primary" onclick="fetchData('${data.symbol}', 'history')">Refresh</button>
+          </div>
+          <div style="overflow-x: auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Open</th>
+                  <th>High</th>
+                  <th>Low</th>
+                  <th>Close</th>
+                  <th>Volume</th>
+                  <th>Dividends</th>
+                  <th>Splits</th>
+                </tr>
+              </thead>
+              <tbody>
+      `;
+
+      // Show data in reverse chronological order (newest first)
+      const reversedData = [...data.data].reverse();
+      for (const point of reversedData) {
+        html += `
+          <tr>
+            <td>${formatDate(point.date)}</td>
+            <td>${formatNumber(point.open)}</td>
+            <td>${formatNumber(point.high)}</td>
+            <td>${formatNumber(point.low)}</td>
+            <td>${formatNumber(point.close)}</td>
+            <td>${formatNumber(point.volume)}</td>
+            <td>${point.dividends ? '$' + formatNumber(point.dividends) : ''}</td>
+            <td>${point.stock_splits ? formatNumber(point.stock_splits) : ''}</td>
+          </tr>
+        `;
+      }
+
+      html += `
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      return html;
+    }
+
+    function renderRecommendations(data) {
+      if (!data.recommendations || data.recommendations.length === 0) return '<p>No recommendations data available.</p>';
+
+      let html = `
+        <div class="card">
+          <h2>${data.symbol} - Analyst Recommendations</h2>
+          <div style="overflow-x: auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Firm</th>
+                  <th>From Grade</th>
+                  <th>To Grade</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+      `;
+
+      const reversedData = [...data.recommendations].reverse();
+      for (const rec of reversedData) {
+        html += `
+          <tr>
+            <td>${formatDate(rec.date)}</td>
+            <td>${rec.firm || '-'}</td>
+            <td>${rec.from_grade || '-'}</td>
+            <td>${rec.to_grade || '-'}</td>
+            <td>${rec.action || '-'}</td>
+          </tr>
+        `;
+      }
+
+      html += `
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      return html;
+    }
+
+    function renderActions(data) {
+      let html = `<div class="card"><h2>${data.symbol} - Corporate Actions</h2>`;
+
+      if (data.dividends && data.dividends.length > 0) {
+        html += '<h3 class="section-title">Dividends</h3>';
+        html += '<div style="overflow-x: auto;"><table><thead><tr><th>Date</th><th>Amount</th></tr></thead><tbody>';
+        const reversedData = [...data.dividends].reverse();
+        for (const div of reversedData) {
+          html += `<tr><td>${formatDate(div.date)}</td><td>$${formatNumber(div.amount)}</td></tr>`;
+        }
+        html += '</tbody></table></div>';
+      } else {
+        html += '<p class="section-title">No dividends data available.</p>';
+      }
+
+      if (data.splits && data.splits.length > 0) {
+        html += '<h3 class="section-title">Stock Splits</h3>';
+        html += '<div style="overflow-x: auto;"><table><thead><tr><th>Date</th><th>Ratio</th></tr></thead><tbody>';
+        const reversedData = [...data.splits].reverse();
+        for (const split of reversedData) {
+          html += `<tr><td>${formatDate(split.date)}</td><td>${formatNumber(split.ratio)}</td></tr>`;
+        }
+        html += '</tbody></table></div>';
+      } else {
+        html += '<p class="section-title">No splits data available.</p>';
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    function renderNews(data) {
+      if (!data.articles || data.articles.length === 0) return '<p>No news articles available.</p>';
+
+      let html = `<div class="card"><h2>${data.symbol} - News</h2>`;
+
+      for (const article of data.articles) {
+        html += `
+          <div style="border-bottom: 1px solid var(--color-gray-700); padding: 16px 0;">
+            <a href="${article.link}" target="_blank" rel="noopener noreferrer" style="color: var(--color-primary); font-weight: 600; font-size: 16px;">${escapeHtml(article.title)}</a>
+            <div style="color: var(--color-gray-400); font-size: 13px; margin-top: 8px;">
+              ${escapeHtml(article.publisher)} • ${formatDate(article.provider_publish_time)}
+            </div>
+          </div>
+        `;
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    function renderFinancials(data) {
+      let html = `
+        <div class="card">
+          <h2>${data.symbol} - Financial Statements</h2>
+          <div class="toggle-group">
+            <label>
+              <input type="checkbox" id="financialsQuarterly" ${data.quarterly ? 'checked' : ''}>
+              Show Quarterly Data
+            </label>
+            <button class="button primary" onclick="fetchData('${data.symbol}', 'financials')">Refresh</button>
+          </div>
+      `;
+
+      if (data.income_statement) {
+        html += '<h3 class="section-title">Income Statement</h3>';
+        html += `<div class="json-output"><pre>${JSON.stringify(data.income_statement, null, 2)}</pre></div>`;
+      }
+
+      if (data.balance_sheet) {
+        html += '<h3 class="section-title">Balance Sheet</h3>';
+        html += `<div class="json-output"><pre>${JSON.stringify(data.balance_sheet, null, 2)}</pre></div>`;
+      }
+
+      if (data.cash_flow) {
+        html += '<h3 class="section-title">Cash Flow</h3>';
+        html += `<div class="json-output"><pre>${JSON.stringify(data.cash_flow, null, 2)}</pre></div>`;
+      }
+
+      if (!data.income_statement && !data.balance_sheet && !data.cash_flow) {
+        html += '<p>No financial data available.</p>';
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    function renderHolders(data) {
+      let html = `<div class="card"><h2>${data.symbol} - Holders</h2>`;
+
+      if (data.major_holders) {
+        html += '<h3 class="section-title">Major Holders</h3>';
+        html += '<div class="key-value-grid">';
+        for (const [key, value] of Object.entries(data.major_holders)) {
+          let displayValue = value;
+          if (typeof value === 'number') {
+            displayValue = formatPercent(value * 100);
+          }
+          html += `<div class="key-value-item"><div class="key">${formatKey(key)}</div><div class="value">${displayValue}</div></div>`;
+        }
+        html += '</div>';
+      }
+
+      if (data.institutional_holders && data.institutional_holders.length > 0) {
+        html += '<h3 class="section-title">Institutional Holders</h3>';
+        html += '<div style="overflow-x: auto;"><table><thead><tr><th>Holder</th><th>Shares</th><th>Date Reported</th><th>% Out</th><th>Value</th></tr></thead><tbody>';
+        for (const holder of data.institutional_holders) {
+          html += `
+            <tr>
+              <td>${escapeHtml(holder.holder)}</td>
+              <td>${formatNumber(holder.shares, true)}</td>
+              <td>${holder.date_reported ? formatDate(holder.date_reported) : '-'}</td>
+              <td>${holder.percent_out ? formatPercent(holder.percent_out) : '-'}</td>
+              <td>${holder.value ? '$' + formatNumber(holder.value, true) : '-'}</td>
+            </tr>
+          `;
+        }
+        html += '</tbody></table></div>';
+      }
+
+      if (data.mutual_fund_holders && data.mutual_fund_holders.length > 0) {
+        html += '<h3 class="section-title">Mutual Fund Holders</h3>';
+        html += '<div style="overflow-x: auto;"><table><thead><tr><th>Holder</th><th>Shares</th><th>Date Reported</th><th>% Out</th><th>Value</th></tr></thead><tbody>';
+        for (const holder of data.mutual_fund_holders) {
+          html += `
+            <tr>
+              <td>${escapeHtml(holder.holder)}</td>
+              <td>${formatNumber(holder.shares, true)}</td>
+              <td>${holder.date_reported ? formatDate(holder.date_reported) : '-'}</td>
+              <td>${holder.percent_out ? formatPercent(holder.percent_out) : '-'}</td>
+              <td>${holder.value ? '$' + formatNumber(holder.value, true) : '-'}</td>
+            </tr>
+          `;
+        }
+        html += '</tbody></table></div>';
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    function renderOptions(data) {
+      let html = `<div class="card"><h2>${data.symbol} - Options Chain</h2>`;
+
+      if (data.expiration_dates && data.expiration_dates.length > 0) {
+        html += '<div class="controls"><label>Expiration Date: </label><select id="optionsDate">';
+        html += '<option value="">Any (default)</option>';
+        for (const date of data.expiration_dates) {
+          html += `<option value="${date}">${formatDate(date)}</option>`;
+        }
+        html += '</select><button class="button primary" onclick="fetchData(\'' + data.symbol + '\', \'options\')">Refresh</button></div>';
+      }
+
+      if (data.calls && data.calls.length > 0) {
+        html += '<h3 class="section-title">Call Options</h3>';
+        html += '<div style="overflow-x: auto;"><table><thead><tr><th>Symbol</th><th>Strike</th><th>Last</th><th>Bid</th><th>Ask</th><th>Change</th><th>% Change</th><th>Volume</th><th>Open Interest</th><th>IV</th><th>ITM</th></tr></thead><tbody>';
+        for (const opt of data.calls) {
+          const changeColor = opt.change >= 0 ? '#4ade80' : '#f87171';
+          const changeSign = opt.change >= 0 ? '+' : '';
+          html += `
+            <tr>
+              <td>${escapeHtml(opt.contract_symbol)}</td>
+              <td>$${formatNumber(opt.strike)}</td>
+              <td>${opt.last_price ? '$' + formatNumber(opt.last_price) : '-'}</td>
+              <td>${opt.bid ? '$' + formatNumber(opt.bid) : '-'}</td>
+              <td>${opt.ask ? '$' + formatNumber(opt.ask) : '-'}</td>
+              <td style="color: ${changeColor}">${opt.change !== null ? changeSign + formatNumber(opt.change) : '-'}</td>
+              <td style="color: ${changeColor}">${opt.percent_change !== null ? changeSign + formatPercent(opt.percent_change) : '-'}</td>
+              <td>${opt.volume ?? '-'}</td>
+              <td>${opt.open_interest ?? '-'}</td>
+              <td>${opt.implied_volatility ? formatPercent(opt.implied_volatility) : '-'}</td>
+              <td>${opt.in_the_money ? 'Yes' : 'No'}</td>
+            </tr>
+          `;
+        }
+        html += '</tbody></table></div>';
+      } else {
+        html += '<p class="section-title">No call options data available.</p>';
+      }
+
+      if (data.puts && data.puts.length > 0) {
+        html += '<h3 class="section-title">Put Options</h3>';
+        html += '<div style="overflow-x: auto;"><table><thead><tr><th>Symbol</th><th>Strike</th><th>Last</th><th>Bid</th><th>Ask</th><th>Change</th><th>% Change</th><th>Volume</th><th>Open Interest</th><th>IV</th><th>ITM</th></tr></thead><tbody>';
+        for (const opt of data.puts) {
+          const changeColor = opt.change >= 0 ? '#4ade80' : '#f87171';
+          const changeSign = opt.change >= 0 ? '+' : '';
+          html += `
+            <tr>
+              <td>${escapeHtml(opt.contract_symbol)}</td>
+              <td>$${formatNumber(opt.strike)}</td>
+              <td>${opt.last_price ? '$' + formatNumber(opt.last_price) : '-'}</td>
+              <td>${opt.bid ? '$' + formatNumber(opt.bid) : '-'}</td>
+              <td>${opt.ask ? '$' + formatNumber(opt.ask) : '-'}</td>
+              <td style="color: ${changeColor}">${opt.change !== null ? changeSign + formatNumber(opt.change) : '-'}</td>
+              <td style="color: ${changeColor}">${opt.percent_change !== null ? changeSign + formatPercent(opt.percent_change) : '-'}</td>
+              <td>${opt.volume ?? '-'}</td>
+              <td>${opt.open_interest ?? '-'}</td>
+              <td>${opt.implied_volatility ? formatPercent(opt.implied_volatility) : '-'}</td>
+              <td>${opt.in_the_money ? 'Yes' : 'No'}</td>
+            </tr>
+          `;
+        }
+        html += '</tbody></table></div>';
+      } else {
+        html += '<p class="section-title">No put options data available.</p>';
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    function KeyValue(key, value, prefix = '', isLarge = false) {
+      if (value === null || value === undefined) return '';
+      let displayValue = value;
+      if (typeof value === 'number') {
+        if (isLarge) {
+          displayValue = formatLargeNumber(value);
+        } else {
+          displayValue = formatNumber(value);
+        }
+      }
+      return `<div class="key-value-item"><div class="key">${formatKey(key)}</div><div class="value">${prefix}${displayValue}</div></div>`;
+    }
+
+    function formatKey(key) {
+      return key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+    }
+
+    function formatNumber(num, isInteger = false) {
+      if (num === null || num === undefined) return '';
+      if (isInteger) return num.toLocaleString();
+      return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function formatLargeNumber(num) {
+      if (num === null || num === undefined) return '';
+      if (num >= 1e12) return (num / 1e12).toFixed(2) + 'T';
+      if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B';
+      if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+      if (num >= 1e3) return (num / 1e3).toFixed(2) + 'K';
+      return num.toLocaleString();
+    }
+
+    function formatPercent(num) {
+      if (num === null || num === undefined) return '';
+      return (num * 100).toFixed(2) + '%';
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
